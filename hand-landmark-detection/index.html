@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MediaPipe 手部关键点实时检测</title>
+
+  <!-- 版权声明 -->
+  <!--
+    Copyright 2023 The MediaPipe Authors.
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+         http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+  -->
+
+  <!-- 引入 Material Components Web CSS -->
+  <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
+
+  <!-- 引入自定义CSS -->
+  <link href="css/styles.css" rel="stylesheet">
+</head>
+<body>
+  <h1>MediaPipe 手部关键点实时检测</h1>
+
+  <section id="demos" class="invisible">
+    <h2>实时手部关键点检测</h2>
+    <p>将您的手放在摄像头前以获取实时手部关键点检测结果。</p>
+
+    <div id="liveView" class="videoView">
+      <button id="webcamButton" class="mdc-button mdc-button--raised">
+        <span class="mdc-button__ripple"></span>
+        <span class="mdc-button__label">启用摄像头</span>
+      </button>
+      <div style="position: relative; margin-top: 20px;">
+        <video id="webcam" style="width: 100%; max-width: 640px;" autoplay playsinline></video>
+        <canvas class="output_canvas" id="output_canvas" style="position: absolute; left: 0px; top: 0px; width: 100%; max-width: 640px;"></canvas>
+        <!-- 添加FPS显示元素 -->
+        <div id="fps" class="fps-display">FPS: 0</div>
+      </div>
+      <!-- 添加坐标显示区域 -->
+      <div id="liveLandmarks" class="landmark-coordinates-live">
+        <h3>检测到的手部关键点坐标</h3>
+        <!-- 坐标表格将动态生成 -->
+      </div>
+    </div>
+  </section>
+
+  <!-- 引入 Material Components Web JS -->
+  <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
+
+  <!-- 引入 MediaPipe JS 库 -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <!-- 引入自定义JS -->
+  <script src="js/script.js" type="module"></script>
+</body>
+</html>
