@@ -5,8 +5,8 @@ const express = require('express');
 const path = require('path');
 
 // 读取 SSL 证书和密钥
-const privateKey = fs.readFileSync('C:\\Users\\Tony\\Desktop\\HongMeng\\Gesture-Recognition\\hand-landmark-detection\\172.20.10.2_key.txt', 'utf8');
-const certificate = fs.readFileSync('C:\\Users\\Tony\\Desktop\\HongMeng\\Gesture-Recognition\\hand-landmark-detection\\172.20.10.2_ssl.crt', 'utf8');
+const privateKey = fs.readFileSync('./172.20.10.2_key.txt', 'utf8');
+const certificate = fs.readFileSync('./172.20.10.2_ssl.crt', 'utf8');
 
 // 设置证书凭据
 const credentials = { key: privateKey, cert: certificate };
