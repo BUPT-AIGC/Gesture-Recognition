@@ -4,16 +4,15 @@ const https = require('https')// https服务器
 const express = require('express')// express模块导入
  
 //读取证书
-const privateKey = fs.readFileSync('C:\\Users\\Tony\\Desktop\\HongMeng\\https_test\\172.20.10.2_key.txt', 'utf8')
-const certificate = fs.readFileSync('C:\\Users\\Tony\\Desktop\\HongMeng\\https_test\\172.20.10.2_ssl.crt', 'utf8')
+const privateKey = fs.readFileSync('./172.20.10.2_key.txt', 'utf8')
+const certificate = fs.readFileSync('./172.20.10.2_ssl.crt', 'utf8')
  
 // 创建 express 应用
 const app = express()
 // 监听 / 路径的 get 请求
 app.get('/', function(req, res) {
-  res.send('Hello Word!')
+  res.send('Hello World!')
 })
- 
  
 const credentials = { key: privateKey, cert: certificate }
 const httpsServer = https.createServer(credentials, app)
