@@ -7,7 +7,7 @@
 1. 进入到 `hand-landmark-detection` 子文件夹，启动NodeJS：
 
    ```bash
-   npm start
+   npm start --host 10.29.155.70 # 使用前，需要使用ipconfig命令查看本机IPv4地址，来修改此处
    ```
 
    这会对手部做关键点检测，并将检测到的关键点坐标通过 WebSocket 传给后端。

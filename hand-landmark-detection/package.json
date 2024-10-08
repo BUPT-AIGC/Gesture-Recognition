@@ -1,17 +1,21 @@
 {
   "name": "hand-landmark-detection",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "http-server ."
+    "start": "node app.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@mediapipe/tasks-vision": "^0.10.0"
+    "@mediapipe/tasks-vision": "^0.10.0",
+    "body-parser": "^1.20.3",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.21.0",
+    "multer": "^1.4.5-lts.1"
   },
   "devDependencies": {
     "http-server": "^14.1.1"

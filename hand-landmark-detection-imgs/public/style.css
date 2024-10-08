@@ -1,0 +1,38 @@
+/* public/style.css */
+body {
+    font-family: roboto;
+    margin: 2em;
+    color: #3d3d3d;
+    --mdc-theme-primary: #007f8b;
+    --mdc-theme-on-primary: #f1f3f4;
+}
+
+h1 {
+    color: #007f8b;
+}
+
+h2 {
+    clear: both;
+}
+
+video {
+    display: block;
+    margin-top: 20px;
+}
+
+section {
+    opacity: 1;
+    transition: opacity 500ms ease-in-out;
+}
+
+.invisible {
+    opacity: 0.2;
+}
+
+.output_canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}

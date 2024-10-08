@@ -122,7 +122,7 @@ import {
       const constraints = {
         video: {
           width: { ideal: 640 },
-          height: { ideal: 480 }
+          height: { ideal: 480 } // 重要参数，手机端
         }
       };
   

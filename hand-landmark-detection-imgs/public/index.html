@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Landmark Detection</title>
+    <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Hand Landmark Detection using MediaPipe</h1>
+
+    <section id="demos" class="invisible">
+        <h2>Detecting Images</h2>
+        <p><b>Click on an image below</b> to see the key landmarks of the hands.</p>
+
+        <div class="detectOnClick">
+            <img src="https://assets.codepen.io/9177687/hand-ge4ca13f5d_1920.jpg" width="100%" crossorigin="anonymous" title="Click to get detection!" />
+        </div>
+
+        <div class="detectOnClick">
+            <img src="https://assets.codepen.io/9177687/couple-gb7cb5db4c_1920.jpg" width="100%" crossorigin="anonymous" title="Click to get detection!" />
+        </div>
+
+        <h2>Detecting Hand in Video</h2>
+        <p>Click <b>Run Inference</b> to detect hand landmarks in the video below.</p>
+
+        <!-- 本地视频播放 -->
+        <video id="video" width="100%" controls>
+            <source src="hand.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+
+        <!-- 推理按钮 -->
+        <button id="inferenceButton" class="mdc-button mdc-button--raised">
+            <span class="mdc-button__ripple"></span>
+            <span class="mdc-button__label">Run Inference</span>
+        </button>
+
+        <!-- 推理结果的canvas -->
+        <div style="position: relative;">
+            <canvas id="output_canvas" style="position: absolute; left: 0; top: 0;"></canvas>
+        </div>
+    </section>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>

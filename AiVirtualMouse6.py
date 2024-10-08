@@ -19,7 +19,7 @@ keyboard = KeyboardController()
 monitors = get_monitors()
 
 # 假设你想控制第一个显示器（主显示器），你可以根据需要调整索引
-monitor_index = 1
+monitor_index = 0
 monitor = monitors[monitor_index]
 
 # 获取显示器的宽度和高度
