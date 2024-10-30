@@ -17,341 +17,458 @@
 
 // 引入 MediaPipe HandLandmarker 和 FilesetResolver
 import {
-  HandLandmarker,
-  FilesetResolver
-} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
-
-// 建立WebSocket连接
-const socket = new WebSocket('ws://localhost:8765');
-
-// 连接打开时的回调
-socket.addEventListener('open', function (event) {
-  console.log('WebSocket连接已打开。');
-});
-
-// 连接关闭时的回调
-socket.addEventListener('close', function (event) {
-  console.log('WebSocket连接已关闭。');
-});
-
-// 连接错误时的回调
-socket.addEventListener('error', function (event) {
-  console.error('WebSocket错误:', event);
-});
-
-let canSend = true;
-const SEND_INTERVAL = 1000 / 5;  // 200 FPS
-
-// 获取演示部分元素
-const demosSection = document.getElementById("demos");
-
-let handLandmarker = undefined;
-let runningMode = "IMAGE";
-let enableWebcamButton;
-let webcamRunning = false;
-
-// FPS 相关变量
-let fpsDisplay = document.getElementById("fps");
-let lastFrameTime = performance.now();
-let frameCount = 0;
-let fps = 0;
-
-// 获取锁定状态显示区域
-const lockStatusElement = document.getElementById("lockStatus");
-
-// 创建 HandLandmarker 实例
-const createHandLandmarker = async () => {
-  try {
-      const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
-      );
-      handLandmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-              modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-              delegate: "GPU"
-          },
-          runningMode: runningMode,
-          numHands: 2
-      });
-      demosSection.classList.remove("invisible");
-  } catch (error) {
-      console.error("HandLandmarker 创建失败:", error);
-      alert("手部关键点检测模型加载失败，请刷新页面重试。");
+    HandLandmarker,
+    FilesetResolver
+  } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+  
+  // 建立WebSocket连接
+  const socket = new WebSocket('ws://localhost:8765');
+  
+  // 连接打开时的回调
+  socket.addEventListener('open', function (event) {
+    console.log('WebSocket连接已打开。');
+  });
+  
+  // 连接关闭时的回调
+  socket.addEventListener('close', function (event) {
+    console.log('WebSocket连接已关闭。');
+  });
+  
+  // 连接错误时的回调
+  socket.addEventListener('error', function (event) {
+    console.error('WebSocket错误:', event);
+  });
+  
+  let canSend = true;
+  const SEND_INTERVAL = 1000 / 5;  // 200 FPS
+  
+  // 获取演示部分元素
+  const demosSection = document.getElementById("demos");
+  
+  let handLandmarker = undefined;
+  let runningMode = "IMAGE";
+  let enableWebcamButton;
+  let webcamRunning = false;
+  
+  // FPS 相关变量
+  let fpsDisplay = document.getElementById("fps");
+  let lastFrameTime = performance.now();
+  let frameCount = 0;
+  let fps = 0;
+  
+  let lockTimeout = null; // 用于开始锁定的计时器
+  let lockStartTime = null; // 记录手指进入区域的时间
+  let isEffectActive = false; // 判断特效是否正在显示
+  
+  let particles = [];
+  const maxParticles = 100;
+  
+  class Particle {
+      constructor(x, y, radius, color) {
+          this.x = x;
+          this.y = y;
+          this.radius = radius;
+          this.color = color;
+          this.velocity = {
+              x: (Math.random() - 0.5) * 2,
+              y: (Math.random() - 0.5) * 2
+          };
+          this.alpha = 1;  // 透明度
+          this.life = 100;  // 粒子的寿命
+      }
+  
+      draw(ctx) {
+          ctx.save();
+          ctx.globalAlpha = this.alpha;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+          ctx.fillStyle = this.color;
+          ctx.fill();
+          ctx.restore();
+      }
+  
+      update() {
+          this.x += this.velocity.x;
+          this.y += this.velocity.y;
+          this.alpha -= 0.01;  // 粒子逐渐消失
+          this.life--;
+      }
   }
-};
-createHandLandmarker();
-
-// 获取实时检测的坐标显示元素
-const liveLandmarksDisplay = document.getElementById("liveLandmarks");
-
-// 检查浏览器是否支持摄像头访问
-const hasGetUserMedia = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-
-// 如果支持，添加按钮事件监听器
-if (hasGetUserMedia()) {
-  enableWebcamButton = document.getElementById("webcamButton");
-  enableWebcamButton.addEventListener("click", enableCam);
-} else {
-  console.warn("您的浏览器不支持 getUserMedia() 方法");
-  alert("抱歉，您的浏览器不支持摄像头访问。");
-}
-
-// 启用摄像头并开始检测
-function enableCam(event) {
-  if (!handLandmarker) {
+  
+  function createParticles(x, y) {
+      for (let i = 0; i < 10; i++) {
+          const radius = Math.random() * 3 + 1;  // 粒子大小
+          const color = `rgba(255, ${Math.random() * 255}, 0, 1)`;  // 粒子颜色
+          particles.push(new Particle(x, y, radius, color));
+      }
+  }
+  
+  function updateParticles(ctx) {
+      particles = particles.filter(particle => particle.life > 0);  // 移除已消失的粒子
+      particles.forEach(particle => {
+          particle.update();
+          particle.draw(ctx);
+      });
+  }
+  
+  // 获取锁定状态显示区域
+  const lockStatusElement = document.getElementById("lockStatus");
+  
+  // 创建 HandLandmarker 实例
+  const createHandLandmarker = async () => {
+    try {
+        const vision = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
+        );
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+                modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                delegate: "GPU"
+            },
+            runningMode: runningMode,
+            numHands: 2
+        });
+        demosSection.classList.remove("invisible");
+    } catch (error) {
+        console.error("HandLandmarker 创建失败:", error);
+        alert("手部关键点检测模型加载失败，请刷新页面重试。");
+    }
+  };
+  createHandLandmarker();
+  
+  // 获取实时检测的坐标显示元素
+  const liveLandmarksDisplay = document.getElementById("liveLandmarks");
+  
+  // 检查浏览器是否支持摄像头访问
+  const hasGetUserMedia = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  
+  // 如果支持，添加按钮事件监听器
+  if (hasGetUserMedia()) {
+    enableWebcamButton = document.getElementById("webcamButton");
+    enableWebcamButton.addEventListener("click", enableCam);
+  } else {
+    console.warn("您的浏览器不支持 getUserMedia() 方法");
+    alert("抱歉，您的浏览器不支持摄像头访问。");
+  }
+  
+  // 启用摄像头并开始检测
+  function enableCam(event) {
+    if (!handLandmarker) {
       console.log("请等待 HandLandmarker 加载完成后再启用摄像头。");
       return;
-  }
-
-  if (webcamRunning) {
-      webcamRunning = false;
-      enableWebcamButton.innerText = "启用摄像头";
-      // 停止摄像头
-      const stream = video.srcObject;
-      if (stream) {
-          const tracks = stream.getTracks();
-          tracks.forEach(track => track.stop());
-      }
-      video.srcObject = null;
-      // 清空实时坐标显示
-      if (liveLandmarksDisplay) {
-          liveLandmarksDisplay.innerHTML = "";
-      }
-      // 重置锁定状态
-      lockStatusElement.innerText = "未锁定任何手";
-  } else {
-      webcamRunning = true;
-      enableWebcamButton.innerText = "禁用检测";
-
-      // 摄像头配置
-      const constraints = {
-          video: {
-              width: { ideal: 640 },
-              height: { ideal: 480 }
-          }
-      };
-
-      // 激活摄像头流
-      navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
-          video.srcObject = stream;
-          video.addEventListener("loadeddata", predictWebcam);
-      }).catch((err) => {
-          console.error("摄像头访问失败:", err);
-          alert("无法访问摄像头，请检查您的设备设置。");
-      });
-  }
-}
-
-// 定义左上角选择区域
-const selectionRegion = {
-  x: 0, // 左上角区域的起始x坐标
-  y: 0, // 左上角区域的起始y坐标
-  width: 0.25, // 区域的宽度，占画布宽度的25%
-  height: 0.25 // 区域的高度，占画布高度的25%
-};
-
-// 判断手的关键点是否在选择区域
-function isHandInSelectionRegion(landmarks, canvasElement) {
-  return landmarks.some(landmark => {
-      const x = landmark.x * canvasElement.width;
-      const y = landmark.y * canvasElement.height;
-
-      const regionX = selectionRegion.x * canvasElement.width;
-      const regionY = selectionRegion.y * canvasElement.height;
-      const regionWidth = selectionRegion.width * canvasElement.width;
-      const regionHeight = selectionRegion.height * canvasElement.height;
-
-      return x >= regionX && x <= regionX + regionWidth &&
-             y >= regionY && y <= regionY + regionHeight;
-  });
-}
-
-// 锁定手的逻辑
-let lockedHandIndex = null;
-function lockHandIfInSelection(landmarksArray, canvasElement) {
-  if (lockedHandIndex !== null) {
-      return; // 如果已经锁定手，就不再检测其他手
-  }
-
-  // 遍历所有检测到的手，检查是否有手进入选择区域
-  for (let i = 0; i < landmarksArray.length; i++) {
-      const landmarks = landmarksArray[i];
-      if (isHandInSelectionRegion(landmarks, canvasElement)) {
-          lockedHandIndex = i; // 锁定该手
-          console.log(`锁定手 ${i}`);
-          lockStatusElement.innerText = `已锁定手 ${i + 1}`; // 更新锁定状态显示
-          break;
-      }
-  }
-}
-
-// 绘制虚线选择区域
-function drawSelectionRegion(canvasCtx, canvasElement) {
-  canvasCtx.strokeStyle = "#FF0000";  // 红色虚线
-  canvasCtx.lineWidth = 2;
-  canvasCtx.setLineDash([5, 5]);  // 设置虚线样式
-  const regionX = selectionRegion.x * canvasElement.width;
-  const regionY = selectionRegion.y * canvasElement.height;
-  const regionWidth = selectionRegion.width * canvasElement.width;
-  const regionHeight = selectionRegion.height * canvasElement.height;
+    }
   
-  canvasCtx.strokeRect(regionX, regionY, regionWidth, regionHeight);
-  canvasCtx.setLineDash([]);  // 重置线条样式
-}
-
-let lastVideoTime = -1;
-let results;
-
-// 预测摄像头图像
-async function predictWebcam() {
-  canvasElement.style.width = video.videoWidth + 'px';
-  canvasElement.style.height = video.videoHeight + 'px';
-  canvasElement.width = video.videoWidth;
-  canvasElement.height = video.videoHeight;
-
-  // 设置运行模式为 VIDEO
-  if (runningMode === "IMAGE") {
-      runningMode = "VIDEO";
-      await handLandmarker.setOptions({ runningMode: "VIDEO" });
+    if (webcamRunning) {
+      stopWebcam();
+    } else {
+      startWebcam();
+    }
   }
 
-  let startTimeMs = performance.now();
-  if (lastVideoTime !== video.currentTime) {
-      lastVideoTime = video.currentTime;
-      try {
-          results = handLandmarker.detectForVideo(video, startTimeMs);
-      } catch (error) {
-          console.error("手部关键点检测失败:", error);
+  function resetLockStatus() {
+    lockedHandIndex = null;
+    lockStartTime = null;
+    isEffectActive = false;
+    particles = [];
+    lockStatusElement.innerText = "未锁定任何手";
+    clearTimeout(lockTimeout);
+  }
+
+  function startWebcam() {
+    webcamRunning = true;
+    enableWebcamButton.innerText = "禁用检测";
+    const constraints = {
+      video: { width: { ideal: 640 }, height: { ideal: 480 } }
+    };
+  
+    // 激活摄像头流
+    navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+      video.srcObject = stream;
+      video.addEventListener("loadeddata", predictWebcam);
+    }).catch((err) => {
+      console.error("摄像头访问失败:", err);
+      alert("无法访问摄像头，请检查您的设备设置。");
+    });
+  }
+  
+  function stopWebcam() {
+    webcamRunning = false;
+    enableWebcamButton.innerText = "启用摄像头";
+    const stream = video.srcObject;
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    video.srcObject = null;
+    resetLockStatus();
+  }
+  
+  // 定义左上角选择区域
+  const selectionRegion = {
+    x: 0, // 左上角区域的起始x坐标
+    y: 0, // 左上角区域的起始y坐标
+    width: 0.25, // 区域的宽度，占画布宽度的25%
+    height: 0.25 // 区域的高度，占画布高度的25%
+  };
+  
+  // 判断手的关键点是否在选择区域
+  function isHandInSelectionRegion(landmarks, canvasElement) {
+    return landmarks.some(landmark => {
+        const x = landmark.x * canvasElement.width;
+        const y = landmark.y * canvasElement.height;
+  
+        const regionX = selectionRegion.x * canvasElement.width;
+        const regionY = selectionRegion.y * canvasElement.height;
+        const regionWidth = selectionRegion.width * canvasElement.width;
+        const regionHeight = selectionRegion.height * canvasElement.height;
+  
+        return x >= regionX && x <= regionX + regionWidth &&
+               y >= regionY && y <= regionY + regionHeight;
+    });
+  }
+  
+  // 锁定手的逻辑
+  let lockedHandIndex = null;
+  function lockHandIfInSelection(landmarksArray, canvasElement) {
+      if (landmarksArray.length === 0) {
+          // 如果没有手的关键点，重置锁定状态
+          lockedHandIndex = null;
+          lockStatusElement.innerText = "未锁定任何手";
+          clearTimeout(lockTimeout); // 清除计时器
+          lockStartTime = null; // 重置时间
+          isEffectActive = false; // 停止特效
+          particles = []; // 清空粒子数组
           return;
       }
-  }
-
-  canvasCtx.save();
-  canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-
-  // 绘制选择区域
-  drawSelectionRegion(canvasCtx, canvasElement);
-
-  // 检测并锁定手
-  if (results.landmarks) {
-      lockHandIfInSelection(results.landmarks, canvasElement);
-
+  
       if (lockedHandIndex !== null) {
-          const lockedHandLandmarks = results.landmarks[lockedHandIndex];
-          
-          // 绘制锁定的手
-          drawConnectors(canvasCtx, lockedHandLandmarks, HAND_CONNECTIONS, {
-              color: "#00FF00",
-              lineWidth: 5
-          });
-          drawLandmarks(canvasCtx, lockedHandLandmarks, { color: "#FF0000", lineWidth: 2 });
-
-          // 这里可以继续处理锁定手的其他逻辑，例如发送数据等
-          // 发送手部关键点数据到Python WebSocket服务器
-          if (socket.readyState === WebSocket.OPEN) {
-              const landmarksData = lockedHandLandmarks.map(lm => ({
-                  id: lm.id,  // 假设lm对象有id属性
-                  x: lm.x,
-                  y: lm.y,
-                  z: lm.z
-              }));
-              socket.send(JSON.stringify({ landmarks: landmarksData }));
+          return; // 如果已经锁定手，就不再检测其他手
+      }
+  
+      // 遍历所有检测到的手，检查是否有手进入选择区域
+      for (let i = 0; i < landmarksArray.length; i++) {
+          const landmarks = landmarksArray[i];
+          if (isHandInSelectionRegion(landmarks, canvasElement)) {
+              if (!lockStartTime) {
+                  // 手指刚进入区域，开始计时
+                  lockStartTime = performance.now();
+                  lockTimeout = setTimeout(() => {
+                      lockedHandIndex = i; // 锁定该手
+                      console.log(`锁定手 ${i}`);
+                      lockStatusElement.innerText = `已锁定手 ${i + 1}`; // 更新锁定状态显示
+                      isEffectActive = false; // 停止特效
+                  }, 2000); // 2秒锁定时间
+              }
+              isEffectActive = true; // 激活特效
+              return; // 如果手指在区域内，继续等待锁定
           }
       }
+  
+      // 如果手指离开了区域，重置计时器并清空粒子数组
+      clearTimeout(lockTimeout);
+      lockStartTime = null;
+      isEffectActive = false;
+      particles = []; // 清空粒子数组，停止继续播放粒子效果
   }
-
-  canvasCtx.restore();
-
-  // 计算并更新FPS
-  frameCount++;
-  const currentTime = performance.now();
-  const deltaTime = currentTime - lastFrameTime;
-
-  if (deltaTime >= 1000) { // 每秒更新一次
+  
+  function drawLockingEffect(canvasCtx, canvasElement) {
+      const currentTime = performance.now();
+      
+      // 计算特效的透明度和大小，逐渐变化
+      const elapsedTime = (currentTime - lockStartTime) / 2000; // 2秒的比例
+      const alpha = Math.sin(elapsedTime * Math.PI); // 使用sin函数让效果闪烁
+      const radius = 30 + 20 * alpha; // 半径在30到50之间变化
+  
+      // 设置特效颜色和透明度
+      canvasCtx.strokeStyle = `rgba(255, 0, 0, ${alpha})`;
+      canvasCtx.lineWidth = 5;
+      
+      // 计算选择区域的中心点
+      const centerX = selectionRegion.x * canvasElement.width + (selectionRegion.width * canvasElement.width) / 2;
+      const centerY = selectionRegion.y * canvasElement.height + (selectionRegion.height * canvasElement.height) / 2;
+  
+      // 绘制圆圈
+      canvasCtx.beginPath();
+      canvasCtx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+      canvasCtx.stroke();
+  }
+  
+  // 绘制虚线选择区域
+  function drawSelectionRegion(canvasCtx, canvasElement) {
+    canvasCtx.strokeStyle = "#FF0000";  // 红色虚线
+    canvasCtx.lineWidth = 2;
+    canvasCtx.setLineDash([5, 5]);  // 设置虚线样式
+    const regionX = selectionRegion.x * canvasElement.width;
+    const regionY = selectionRegion.y * canvasElement.height;
+    const regionWidth = selectionRegion.width * canvasElement.width;
+    const regionHeight = selectionRegion.height * canvasElement.height;
+    
+    canvasCtx.strokeRect(regionX, regionY, regionWidth, regionHeight);
+    canvasCtx.setLineDash([]);  // 重置线条样式
+  }
+  
+  let lastVideoTime = -1;
+  let results;
+  
+  // 预测摄像头图像
+  async function predictWebcam() {
+    if (!webcamRunning || !video.srcObject) {
+      return;  // 如果摄像头未运行，退出检测循环
+    }
+  
+    canvasElement.style.width = video.videoWidth + 'px';
+    canvasElement.style.height = video.videoHeight + 'px';
+    canvasElement.width = video.videoWidth;
+    canvasElement.height = video.videoHeight;
+  
+    // 设置运行模式为 VIDEO
+    if (runningMode === "IMAGE") {
+      runningMode = "VIDEO";
+      await handLandmarker.setOptions({ runningMode: "VIDEO" });
+    }
+  
+    let startTimeMs = performance.now();
+    if (lastVideoTime !== video.currentTime) {
+      lastVideoTime = video.currentTime;
+      try {
+        results = handLandmarker.detectForVideo(video, startTimeMs);
+      } catch (error) {
+        console.error("手部关键点检测失败:", error);
+        return;
+      }
+    }
+  
+    canvasCtx.save();
+    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    
+    // 绘制选择区域
+    drawSelectionRegion(canvasCtx, canvasElement);
+    
+    // 检测并锁定手
+    if (results.landmarks && results.landmarks.length > 0) {
+      lockHandIfInSelection(results.landmarks, canvasElement);
+  
+      // 如果特效激活，则绘制特效
+      if (isEffectActive && lockStartTime) {
+        drawLockingEffect(canvasCtx, canvasElement);
+        const centerX = selectionRegion.x * canvasElement.width + (selectionRegion.width * canvasElement.width) / 2;
+        const centerY = selectionRegion.y * canvasElement.height + (selectionRegion.height * canvasElement.height) / 2;
+        createParticles(centerX, centerY);
+      }
+  
+      // 更新并绘制粒子
+      updateParticles(canvasCtx);
+  
+      if (lockedHandIndex !== null && results.landmarks[lockedHandIndex]) {
+        const lockedHandLandmarks = results.landmarks[lockedHandIndex];
+        if (lockedHandLandmarks && Array.isArray(lockedHandLandmarks)) {
+          drawConnectors(canvasCtx, lockedHandLandmarks, HAND_CONNECTIONS, { color: "#00FF00", lineWidth: 5 });
+          drawLandmarks(canvasCtx, lockedHandLandmarks, { color: "#FF0000", lineWidth: 2 });
+          if (socket.readyState === WebSocket.OPEN) {
+            const landmarksData = lockedHandLandmarks.map((lm, index) => ({
+              id: index,
+              x: lm.x,
+              y: lm.y,
+              z: lm.z
+            }));
+            socket.send(JSON.stringify({ landmarks: landmarksData }));
+          }
+        }
+      }
+    } else {
+      resetLockStatus();
+    }
+  
+    canvasCtx.restore();
+  
+    // 计算并更新FPS
+    frameCount++;
+    const currentTime = performance.now();
+    const deltaTime = currentTime - lastFrameTime;
+  
+    if (deltaTime >= 1000) { // 每秒更新一次
       fps = frameCount;
       frameCount = 0;
       lastFrameTime = currentTime;
       if (fpsDisplay) {
-          fpsDisplay.innerText = `FPS: ${fps}`;
+        fpsDisplay.innerText = `FPS: ${fps}`;
       }
-  }
-
-  // 显示实时关键点坐标
-  if (results.landmarks && liveLandmarksDisplay) {
-      // 清空之前的内容
+    }
+  
+    // 显示实时关键点坐标
+    if (results.landmarks && liveLandmarksDisplay) {
       liveLandmarksDisplay.innerHTML = "<h3>检测到的手部关键点坐标</h3>";
       results.landmarks.forEach((landmarks, index) => {
-          const title = `手 ${index + 1} 的关键点坐标`;
-          const table = createEmptyTable(liveLandmarksDisplay, title);
-          displayLandmarkCoordinates(landmarks, table);
+        const title = `手 ${index + 1} 的关键点坐标`;
+        const table = createEmptyTable(liveLandmarksDisplay, title);
+        displayLandmarkCoordinates(landmarks, table);
       });
-  }
-
-  // 如果摄像头正在运行，继续请求下一帧
-  if (webcamRunning) {
+    }
+  
+    // 如果摄像头正在运行，继续请求下一帧
+    if (webcamRunning) {
       window.requestAnimationFrame(predictWebcam);
+    }
   }
-}
-
-/********************************************************************
-// 辅助函数：创建空的表格
-********************************************************************/
-function createEmptyTable(container, title) {
-  const heading = document.createElement("h3");
-  heading.innerText = title;
-  container.appendChild(heading);
-
-  const table = document.createElement("table");
-  const headerRow = document.createElement("tr");
-
-  const idHeader = document.createElement("th");
-  idHeader.innerText = "关键点 ID";
-  const xHeader = document.createElement("th");
-  xHeader.innerText = "X";
-  const yHeader = document.createElement("th");
-  yHeader.innerText = "Y";
-  const zHeader = document.createElement("th");
-  zHeader.innerText = "Z";
-
-  headerRow.appendChild(idHeader);
-  headerRow.appendChild(xHeader);
-  headerRow.appendChild(yHeader);
-  headerRow.appendChild(zHeader);
-  table.appendChild(headerRow);
-
-  container.appendChild(table);
-  return table;
-}
-
-/********************************************************************
-// 辅助函数：显示关键点坐标
-********************************************************************/
-function displayLandmarkCoordinates(landmarks, table) {
-  landmarks.forEach((landmark, index) => {
-      const row = document.createElement("tr");
-
-      const idCell = document.createElement("td");
-      idCell.innerText = index;
-
-      const xCell = document.createElement("td");
-      xCell.innerText = parseFloat(landmark.x).toFixed(3);
-
-      const yCell = document.createElement("td");
-      yCell.innerText = parseFloat(landmark.y).toFixed(3);
-
-      const zCell = document.createElement("td");
-      zCell.innerText = parseFloat(landmark.z).toFixed(3);
-
-      row.appendChild(idCell);
-      row.appendChild(xCell);
-      row.appendChild(yCell);
-      row.appendChild(zCell);
-
-      table.appendChild(row);
-  });
-}
-
-// 获取摄像头视频和画布元素
-const video = document.getElementById("webcam");
-const canvasElement = document.getElementById("output_canvas");
-const canvasCtx = canvasElement.getContext("2d");
+  
+  /********************************************************************
+  // 辅助函数：创建空的表格
+  ********************************************************************/
+  function createEmptyTable(container, title) {
+    const heading = document.createElement("h3");
+    heading.innerText = title;
+    container.appendChild(heading);
+  
+    const table = document.createElement("table");
+    const headerRow = document.createElement("tr");
+  
+    const idHeader = document.createElement("th");
+    idHeader.innerText = "关键点 ID";
+    const xHeader = document.createElement("th");
+    xHeader.innerText = "X";
+    const yHeader = document.createElement("th");
+    yHeader.innerText = "Y";
+    const zHeader = document.createElement("th");
+    zHeader.innerText = "Z";
+  
+    headerRow.appendChild(idHeader);
+    headerRow.appendChild(xHeader);
+    headerRow.appendChild(yHeader);
+    headerRow.appendChild(zHeader);
+    table.appendChild(headerRow);
+  
+    container.appendChild(table);
+    return table;
+  }
+  
+  /********************************************************************
+  // 辅助函数：显示关键点坐标
+  ********************************************************************/
+  function displayLandmarkCoordinates(landmarks, table) {
+    landmarks.forEach((landmark, index) => {
+        const row = document.createElement("tr");
+  
+        const idCell = document.createElement("td");
+        idCell.innerText = index;
+  
+        const xCell = document.createElement("td");
+        xCell.innerText = parseFloat(landmark.x).toFixed(3);
+  
+        const yCell = document.createElement("td");
+        yCell.innerText = parseFloat(landmark.y).toFixed(3);
+  
+        const zCell = document.createElement("td");
+        zCell.innerText = parseFloat(landmark.z).toFixed(3);
+  
+        row.appendChild(idCell);
+        row.appendChild(xCell);
+        row.appendChild(yCell);
+        row.appendChild(zCell);
+  
+        table.appendChild(row);
+    });
+  }
+  
+  // 获取摄像头视频和画布元素
+  const video = document.getElementById("webcam");
+  const canvasElement = document.getElementById("output_canvas");
+  const canvasCtx = canvasElement.getContext("2d");
