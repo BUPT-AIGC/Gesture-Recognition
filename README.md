@@ -10,7 +10,15 @@
    npm start
    ```
 
-   这会对手部做关键点检测，并将检测到的关键点坐标通过 WebSocket 传给后端。
+   这会对手部做关键点检测，并将检测到的关键点坐标通过 WebSocket 
+   
+   进入到 `hand-landmark-detection-track` 子文件夹，启动NodeJS：
+
+   ```bash
+   node server.js
+   ```
+
+   这应对多只手同时出现在摄像头画面，
 
 2. 运行 `AiVirtualMouse6.py`：
 

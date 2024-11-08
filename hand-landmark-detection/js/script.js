@@ -19,7 +19,7 @@
 import {
     HandLandmarker,
     FilesetResolver
-  } from "/hand_landmark_detection/node_modules/@mediapipe/tasks-vision/vision_bundle.js";
+  } from "/node_modules/@mediapipe/tasks-vision/vision_bundle.js";
   
   // 建立WebSocket连接
   const socket = new WebSocket('ws://localhost:8765');
@@ -60,11 +60,11 @@ import {
   const createHandLandmarker = async () => {
     try {
       const vision = await FilesetResolver.forVisionTasks(
-        "/hand_landmark_detection/node_modules/@mediapipe/tasks-vision/wasm"
+        "/node_modules/@mediapipe/tasks-vision/wasm"
       );
       handLandmarker = await HandLandmarker.createFromOptions(vision, {
         baseOptions: {
-          modelAssetPath: `/hand_landmark_detection/models/hand_landmarker.task`,
+          modelAssetPath: `/models/hand_landmarker.task`,
           delegate: "GPU"
         },
         runningMode: runningMode,
