@@ -1,3 +1,20 @@
+// 版权声明
+/*
+  Copyright 2023 The MediaPipe Authors.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
+
 // 引入 MediaPipe HandLandmarker 和 FilesetResolver
 import {
   HandLandmarker,
@@ -44,9 +61,11 @@ let lockStartTime = null;
 let isEffectActive = false;
 let lockedHandIndex = null;
 let particles = [];
-let lockedHandLastPosition = null; // 新增：记录锁定手的最后位置
-let lastDetectedLockTime = 0; // 新增：记录最后检测到锁定手的时间
-const LOCK_TIMEOUT = 2000; // 新增：锁定超时时间，单位为毫秒
+const maxParticles = 100;
+
+// 添加用于处理锁定解除的变量
+let lockReleaseTimeout = null; // 用于延迟解除锁定
+const LOCK_RELEASE_DELAY = 2000; // 宽限期（毫秒）
 
 // 粒子类定义
 class Particle {
@@ -156,11 +175,10 @@ function resetLockStatus() {
   particles = [];
   lockStatusElement.innerText = "未锁定任何手";
   clearTimeout(lockTimeout);
-  lockedHandLastPosition = null; // 新增
-  lastDetectedLockTime = 0; // 新增
+  lockTimeout = null;
 }
 
-// 启用摄像头并开始检测
+// 开启摄像头
 function startWebcam() {
   webcamRunning = true;
   enableWebcamButton.innerText = "禁用检测";
@@ -222,15 +240,39 @@ function isHandInSelectionRegion(landmarks, canvasElement) {
 
 // 锁定手的逻辑
 function lockHandIfInSelection(landmarksArray, canvasElement) {
-  if (lockedHandIndex !== null) {
-    // 已经锁定，不再尝试重新锁定
-    return;
-  }
-
   if (landmarksArray.length === 0) {
+    // 不再检测到任何手时，启动释放锁定的延迟
+    if (lockedHandIndex !== null && !lockReleaseTimeout) {
+      lockReleaseTimeout = setTimeout(() => {
+        resetLockStatus();
+      }, LOCK_RELEASE_DELAY); // 2秒后释放锁定
+    }
     return;
   }
 
+  if (lockedHandIndex !== null) {
+    // 如果已经锁定手，尝试找到最接近锁定手的位置
+    const lockedHandLandmarks = landmarksArray[lockedHandIndex];
+    if (!lockedHandLandmarks) {
+      // 如果当前帧中没有锁定的手，启动释放锁定的延迟
+      if (!lockReleaseTimeout) {
+        lockReleaseTimeout = setTimeout(() => {
+          resetLockStatus();
+        }, LOCK_RELEASE_DELAY);
+      }
+    } else {
+      // 如果找到锁定的手，取消释放锁定的延迟
+      if (lockReleaseTimeout) {
+        clearTimeout(lockReleaseTimeout);
+        lockReleaseTimeout = null;
+      }
+      // 更新锁定手的位置（可选，用于更精准的锁定）
+      // 这里可以添加更多逻辑来更新锁定的手的位置或特征
+    }
+    return;
+  }
+
+  // 如果还未锁定任何手，检查是否有手进入选择区域以进行锁定
   for (let i = 0; i < landmarksArray.length; i++) {
     const landmarks = landmarksArray[i];
     if (isHandInSelectionRegion(landmarks, canvasElement)) {
@@ -241,16 +283,9 @@ function lockHandIfInSelection(landmarksArray, canvasElement) {
           console.log(`锁定手 ${i}`);
           lockStatusElement.innerText = `已锁定手 ${i + 1}`;
           isEffectActive = false;
-
-          // 记录锁定手的最后位置（腕部）
-          const wristLandmark = landmarks[0];
-          if (wristLandmark) {
-            lockedHandLastPosition = {
-              x: wristLandmark.x * canvasElement.width,
-              y: wristLandmark.y * canvasElement.height,
-            };
-            lastDetectedLockTime = performance.now();
-          }
+          lockStartTime = null;
+          clearTimeout(lockTimeout);
+          lockTimeout = null;
         }, 2000); // 2秒锁定时间
       }
       isEffectActive = true;
@@ -258,7 +293,12 @@ function lockHandIfInSelection(landmarksArray, canvasElement) {
     }
   }
 
-  resetLockStatus();
+  // 如果没有手在选择区域内，重置锁定相关的计时
+  if (lockTimeout) {
+    clearTimeout(lockTimeout);
+    lockTimeout = null;
+  }
+  isEffectActive = false;
 }
 
 // 绘制锁定效果
@@ -333,58 +373,15 @@ async function predictWebcam() {
   // 绘制选择区域
   drawSelectionRegion(canvasCtx, canvasElement);
 
+  // 检测并锁定手
   if (results.landmarks && results.landmarks.length > 0) {
-    if (lockedHandIndex === null) {
-      lockHandIfInSelection(results.landmarks, canvasElement);
+    // 取消可能存在的锁定释放定时器，因为检测到了手
+    if (lockReleaseTimeout) {
+      clearTimeout(lockReleaseTimeout);
+      lockReleaseTimeout = null;
     }
 
-    if (lockedHandIndex !== null) {
-      // 尝试找到与锁定手相近的当前手
-      let found = false;
-      for (let i = 0; i < results.landmarks.length; i++) {
-        const landmarks = results.landmarks[i];
-        const wristLandmark = landmarks[0];
-        if (wristLandmark) {
-          const wristX = wristLandmark.x * canvasElement.width;
-          const wristY = wristLandmark.y * canvasElement.height;
-
-          const distance = Math.hypot(
-            wristX - lockedHandLastPosition.x,
-            wristY - lockedHandLastPosition.y
-          );
-
-          // 设定一个距离阈值，例如50像素
-          if (distance < 50) {
-            // 更新锁定手的最后位置和检测时间
-            lockedHandLastPosition = { x: wristX, y: wristY };
-            lastDetectedLockTime = performance.now();
-            lockedHandIndex = i;
-            found = true;
-
-            // // 获取当前时间，用于将 performance.now() 转换为可读时间
-            // const currentTime = new Date(Date.now() - (performance.now() - lastDetectedLockTime));
-
-            // // 格式化当前时间为可阅读的字符串
-            // const readableTime = currentTime.toLocaleString();
-
-            // // 输出锁定手的最后位置、检测时间和锁定的手索引
-            // console.log('lockedHandLastPosition:', lockedHandLastPosition);
-            // console.log('lastDetectedLockTime (readable):', readableTime);
-            // console.log('lockedHandIndex:', lockedHandIndex);
-
-            break;
-          }
-        }
-      }
-
-      if (!found) {
-        // 检查是否超出锁定超时时间
-        const currentTime = performance.now();
-        if (currentTime - lastDetectedLockTime > LOCK_TIMEOUT) {
-          resetLockStatus();
-        }
-      }
-    }
+    lockHandIfInSelection(results.landmarks, canvasElement);
 
     if (isEffectActive && lockStartTime) {
       drawLockingEffect(canvasCtx, canvasElement);
@@ -471,14 +468,12 @@ async function predictWebcam() {
       }
     });
   } else {
-    // 当没有检测到手时，不立即重置锁定状态
-    if (lockedHandIndex !== null) {
-      const currentTime = performance.now();
-      if (currentTime - lastDetectedLockTime > LOCK_TIMEOUT) {
+    // 没有检测到手时，锁定解除逻辑已经在 lockHandIfInSelection 中处理
+    // 这里只需要确保启动了释放锁定的延迟
+    if (lockedHandIndex !== null && !lockReleaseTimeout) {
+      lockReleaseTimeout = setTimeout(() => {
         resetLockStatus();
-      }
-    } else {
-      resetLockStatus();
+      }, LOCK_RELEASE_DELAY); // 2秒后释放锁定
     }
   }
 
